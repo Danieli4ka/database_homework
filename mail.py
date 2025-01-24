@@ -131,9 +131,9 @@ class DatabaseManager:
                             WHERE client_id = %s AND phone_number = %s;
                         """, (client_id, phone))
                         self.connection.commit()
-                        print(f"Телефон {phone} клиента с ID {client_id} успешно удалён.")
+                        print(f'Телефон {phone} клиента с ID {client_id} успешно удалён.')
                     else:
-                        print("Удаление отменено.")
+                        print('Удаление отменено.')
                 else:
                     confirmation = input(f'Удалить {phone} клиента с ID {client_id}? (да/нет): ').strip().lower()
                     if confirmation == 'да':
@@ -150,9 +150,49 @@ class DatabaseManager:
             self.connection.rollback()
             print(f'Ошибка при удалении телефонов: {e}')
 
+    def search_client(self, first_name=None, last_name=None, email=None, phone=None):
+        try:
+            with self.connection.cursor() as cur:
+                conditions = []
+                params = []
+                if first_name:
+                    conditions.append('first_name = %s')
+                    params.append(first_name)
+                if last_name:
+                    conditions.append('last_name = %s')
+                    params.append(last_name)
+                if email:
+                    conditions.append('email = %s')
+                    params.append(email)
+                if phone:
+                    conditions.append("""
+                        EXISTS (
+                            SELECT 1 FROM Phone WHERE Phone.client_id = Client.id AND Phone.phone_number = %s
+                        )
+                    """)
+                    params.append(phone)
+
+                where_clause = " AND ".join(conditions) if conditions else "TRUE"
+                query = f"""
+                    SELECT Client.id, first_name, last_name, email, array_agg(Phone.phone_number) AS phones
+                    FROM Client
+                    LEFT JOIN Phone ON Client.id = Phone.client_id
+                    WHERE {where_clause}
+                    GROUP BY Client.id;
+                """
+                cur.execute(query, params)
+                results = cur.fetchall()
+                if results:
+                    for result in results:
+                        print(f'ID: {result[0]}, Имя: {result[1]}, Фамилия: {result[2]}, Email: {result[3]}, Телефоны: {result[4]}')
+                else:
+                    print('Клиенты не найдены.')
+        except Exception as e:
+            print(f'Ошибка при поиске клиента: {e}')
+
     def close(self):
         self.connection.close()
-        print("Соединение с базой данных закрыто.")
+        print('Соединение с базой данных закрыто.')
 
 if __name__ == "__main__":
     db_manager = DatabaseManager(
@@ -167,4 +207,6 @@ db_manager.add_client('Мила', 'Логинова', 'fhjfh@jhj.com')
 db_manager.add_phone(1, '+7829282877')
 db_manager.delete_phone(1, '+123456788')
 db_manager.change_client(1, last_name = 'Лодочкина')
+db_manager.search_client(first_name='Катя')
+db_manager.search_client(phone='+987654321')
 db_manager.close()
